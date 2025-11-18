@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pandas
+numpy
+scikit-learn
+google-generativeai
+python-multipart
+python-dotenv
+firebase-admin
+asteval

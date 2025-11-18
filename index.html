@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Intelligent Claims Processing</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/js/all.min.js"></script>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f4f7f6;
+      }
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+      .table-container::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .table-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+      }
+      .table-container::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+      }
+      .table-container::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+      .table-container thead th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #f9fafb;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useMemo, useEffect, useRef } = React;
+
+      // === Main App Component ===
+      function App() {
+        const [currentPage, setCurrentPage] = useState("landing");
+        const [results, setResults] = useState([]);
+        const [jobHistory, setJobHistory] = useState([]);
+        const [isLoading, setIsLoading] = useState(false);
+        const [error, setError] = useState(null);
+        const [trendData, setTrendData] = useState(null);
+
+        // --- Navigation Handlers ---
+        const handleEnterPlatform = () => {
+          setCurrentPage("main");
+        };
+        const handleProcessNewFile = () => {
+          setResults([]);
+          setError(null);
+          setIsLoading(false);
+          setCurrentPage("main");
+        };
+        const handleViewHistory = async () => {
+          setIsLoading(true);
+          setError(null);
+          try {
+            const r = await fetch("http://localhost:8000/jobs");
+            if (!r.ok) {
+              const e = await r.json();
+              throw new Error(e.detail || "Fetch failed");
+            }
+            const d = await r.json();
+            setJobHistory(d || []);
+            setCurrentPage("history");
+          } catch (e) {
+            setError(e.message);
+            setJobHistory([]);
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        const handleGoToMain = () => {
+          setError(null);
+          setCurrentPage("main");
+          setTrendData(null);
+        };
+        const handleViewJobDetails = async (jobId) => {
+          if (!jobId) {
+            setError("Job ID missing");
+            setCurrentPage("history");
+            return;
+          }
+          setIsLoading(true);
+          setError(null);
+          try {
+            const r = await fetch(`http://localhost:8000/job/${jobId}`);
+            if (!r.ok) {
+              const e = await r.json();
+              throw new Error(e.detail || "Fetch failed");
+            }
+            const jD = await r.json();
+            setResults(jD.results || []);
+            setCurrentPage("dashboard");
+          } catch (e) {
+            setError(e.message);
+            setCurrentPage("history");
+          } finally {
+            setIsLoading(false);
+          }
+        };
+        const handleViewTrends = async () => {
+          setIsLoading(true);
+          setError(null);
+          setTrendData(null);
+          try {
+            const r = await fetch(
+              "http://localhost:8000/trends/rejection_reasons"
+            );
+            if (!r.ok) {
+              const e = await r.json();
+              throw new Error(e.detail || "Fetch trends failed");
+            }
+            const d = await r.json();
+            setTrendData(d);
+            setCurrentPage("trendAnalysis");
+          } catch (e) {
+            setError(e.message);
+            setCurrentPage("main");
+          } finally {
+            setIsLoading(false);
+          }
+        };
+
+        // Main router
+        const renderPage = () => {
+          if (isLoading) {
+            return (
+              <div className="flex justify-center items-center h-96">
+                <i className="fas fa-spinner fa-spin text-blue-600 text-6xl"></i>
+              </div>
+            );
+          }
+          switch (currentPage) {
+            case "landing":
+              return <LandingPage onEnter={handleEnterPlatform} />;
+            case "main":
+              return (
+                <UploadComponent
+                  setIsLoading={setIsLoading}
+                  setError={setError}
+                  setResults={setResults}
+                  setCurrentPage={setCurrentPage}
+                  isLoading={isLoading}
+                  error={error}
+                  onViewHistory={handleViewHistory}
+                  onViewTrends={handleViewTrends}
+                />
+              );
+            case "dashboard":
+              return (
+                <DashboardComponent
+                  results={results}
+                  onProcessNewFile={handleProcessNewFile}
+                />
+              );
+            case "history":
+              return (
+                <JobHistoryComponent
+                  jobs={jobHistory}
+                  onBack={handleGoToMain}
+                  onViewJobDetails={handleViewJobDetails}
+                  error={error}
+                />
+              );
+            case "trendAnalysis":
+              return (
+                <TrendAnalysisComponent
+                  trendData={trendData}
+                  onBack={handleGoToMain}
+                  error={error}
+                />
+              );
+            default:
+              return <LandingPage onEnter={handleEnterPlatform} />;
+          }
+        };
+        return (
+          <div className="min-h-screen bg-gray-100">
+            <Header onGoToMain={handleGoToMain} />
+            <main className="container mx-auto px-4 py-8">{renderPage()}</main>
+            <Footer />
+          </div>
+        );
+      }
+
+      // === Header ===
+      function Header({ onGoToMain }) {
+        return (
+          <header className="bg-white shadow-md sticky top-0 z-50">
+            <nav className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
+              <div
+                className="flex items-center space-x-2 cursor-pointer"
+                onClick={onGoToMain}
+              >
+                <div className="p-2 bg-blue-600 rounded-lg shadow-inner">
+                  <i className="fas fa-shield-alt text-white text-xl"></i>
+                </div>
+                <span className="text-xl md:text-2xl font-bold text-gray-800 tracking-tight">
+                  MediAgent Claims
+                </span>
+              </div>
+              <span className="text-sm text-gray-500 hidden md:block">
+                M.Tech AI & DS Project
+              </span>
+            </nav>
+          </header>
+        );
+      }
+      // === Footer ===
+      function Footer() {
+        return (
+          <footer className="text-center py-6 mt-12 border-t border-gray-200">
+            <p className="text-sm text-gray-500">
+              Built as an M.Tech (AI & DS) Final Year Project.
+            </p>
+          </footer>
+        );
+      }
+      // === Landing Page ===
+      function LandingPage({ onEnter }) {
+        return (
+          <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 rounded-lg shadow-xl text-center mt-8 border border-gray-200">
+            <i className="fas fa-rocket text-6xl text-blue-600 mb-6 animate-pulse"></i>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+              Multi-Agent Data Intelligence Platform
+            </h1>
+            <p className="text-lg text-gray-700 mb-10 leading-relaxed">
+              Streamlining medical claim processing... Compliant with HIPAA &
+              ICD-10.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left mb-12">
+              <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 shadow-sm">
+                <h3 className="font-semibold text-lg text-blue-800 mb-2 flex items-center">
+                  <i className="fas fa-check-circle mr-2 text-blue-600"></i>
+                  Validation
+                </h3>
+                <p className="text-sm text-gray-600">Applies rules...</p>
+              </div>
+              <div className="bg-green-50 p-6 rounded-lg border border-green-200 shadow-sm">
+                <h3 className="font-semibold text-lg text-green-800 mb-2 flex items-center">
+                  <i className="fas fa-search-dollar mr-2 text-green-600"></i>
+                  Anomaly
+                </h3>
+                <p className="text-sm text-gray-600">Uses ML...</p>
+              </div>
+              <div className="bg-purple-50 p-6 rounded-lg border border-purple-200 shadow-sm">
+                <h3 className="font-semibold text-lg text-purple-800 mb-2 flex items-center">
+                  <i className="fas fa-brain mr-2 text-purple-600"></i>
+                  Adjudication
+                </h3>
+                <p className="text-sm text-gray-600">Uses Gemini...</p>
+              </div>
+            </div>
+            <button
+              onClick={onEnter}
+              className="w-full md:w-auto px-12 py-4 bg-blue-600 text-white font-bold text-lg rounded-lg shadow-lg hover:bg-blue-700 transition-all transform hover:scale-105 duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              Enter Platform <i className="fas fa-arrow-right ml-2"></i>
+            </button>
+          </div>
+        );
+      }
+
+      // === Upload Component ===
+      function UploadComponent({
+        setIsLoading,
+        setError,
+        setResults,
+        setCurrentPage,
+        isLoading,
+        error,
+        onViewHistory,
+        onViewTrends,
+      }) {
+        const [file, setFile] = useState(null);
+        const [fileName, setFileName] = useState("");
+        const [customRule, setCustomRule] = useState(
+          '(claim_amount < 10000) and (procedure_code != "99999")'
+        );
+        const handleFileChange = (e) => {
+          const sf = e.target.files[0];
+          if (sf) {
+            setFile(sf);
+            setFileName(sf.name);
+            setError(null);
+          }
+        };
+        const handleDrop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.classList.remove("border-blue-500", "bg-blue-50");
+          const df = e.dataTransfer.files[0];
+          if (df && (df.type === "text/csv" || df.name.endsWith(".csv"))) {
+            setFile(df);
+            setFileName(df.name);
+            setError(null);
+          } else {
+            setError("Invalid file type.");
+          }
+        };
+        const handleDragOver = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.classList.add("border-blue-500", "bg-blue-50");
+        };
+        const handleDragLeave = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.currentTarget.classList.remove("border-blue-500", "bg-blue-50");
+        };
+        const handleUpload = async () => {
+          if (!file) {
+            setError("Select file.");
+            return;
+          }
+          if (!customRule.trim()) {
+            setError("Enter rule.");
+            return;
+          }
+          setIsLoading(true);
+          setError(null);
+          setResults([]);
+          try {
+            const fd = new FormData();
+            fd.append("file", file);
+            fd.append("custom_rule", customRule);
+            const r = await fetch("http://localhost:8000/upload-and-process", {
+              method: "POST",
+              body: fd,
+            });
+            const rD = await r.json();
+            if (!r.ok) {
+              throw new Error(rD.detail || `HTTP error ${r.status}`);
+            }
+            if (!Array.isArray(rD)) {
+              throw new Error("Invalid response format.");
+            }
+            if (rD.length === 0) {
+              setError("Processed, no results.");
+            } else {
+              setResults(rD);
+              setCurrentPage("dashboard");
+            }
+          } catch (err) {
+            console.error("Err:", err);
+            if (err.message.includes("fetch")) {
+              setError("Cannot connect to backend.");
+            } else {
+              setError(`Error: ${err.message}`);
+            }
+          } finally {
+            setIsLoading(false);
+          }
+        };
+
+        return (
+          <div className="max-w-6xl mx-auto">
+            <div className="flex justify-end mb-6 space-x-3">
+              <button
+                onClick={onViewHistory}
+                disabled={isLoading}
+                className="inline-flex items-center px-5 py-2.5 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+              >
+                {" "}
+                <i className="fas fa-history mr-2"></i> View History{" "}
+              </button>
+              <button
+                onClick={onViewTrends}
+                disabled={isLoading}
+                className="inline-flex items-center px-5 py-2.5 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+              >
+                {" "}
+                <i className="fas fa-chart-line mr-2"></i> Trend Analysis{" "}
+              </button>
+            </div>
+            <div className="bg-white p-8 md:p-10 rounded-lg shadow-xl border border-gray-200">
+              <h2 className="text-3xl font-bold text-gray-800 mb-4">
+                Intelligent Claims Processing
+              </h2>
+              <p className="text-gray-600 mb-10">
+                Upload CSV, define rule, let AI agents process.
+              </p>
+              {error && (
+                <div
+                  className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-8 shadow-sm"
+                  role="alert"
+                >
+                  <p className="font-bold">Error</p>
+                  <p>{error}</p>
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
+                <div className="md:col-span-1">
+                  {" "}
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    1. Upload (CSV)
+                  </label>
+                  <div
+                    className="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all duration-300 group"
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => document.getElementById("fileInput").click()}
+                  >
+                    <input
+                      type="file"
+                      id="fileInput"
+                      className="hidden"
+                      accept=".csv"
+                      onChange={handleFileChange}
+                    />
+                    <i className="fas fa-file-csv text-5xl text-gray-400 mb-4 group-hover:text-blue-500 transition-colors"></i>
+                    {fileName ? (
+                      <p className="text-lg font-medium text-gray-700 break-words">
+                        {fileName}
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-lg font-medium text-blue-600">
+                          Click/Drag
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="md:col-span-1">
+                  {" "}
+                  <label
+                    htmlFor="customRule"
+                    className="block text-lg font-semibold text-gray-700 mb-3"
+                  >
+                    2. Custom Rule
+                  </label>
+                  <input
+                    type="text"
+                    id="customRule"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                    value={customRule}
+                    onChange={(e) => setCustomRule(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    Ex:
+                    <code>
+                      (claim_amount &lt; 5k) or (diagnosis_code=="J06.9")
+                    </code>
+                  </p>
+                </div>
+                <div className="md:col-span-1">
+                  {" "}
+                  <button
+                    onClick={handleUpload}
+                    disabled={isLoading || !file}
+                    className={`w-full inline-flex items-center justify-center px-6 py-4 text-lg font-bold text-white rounded-lg shadow-md transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                      isLoading || !file
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-700 transform hover:scale-105 focus:ring-blue-500"
+                    }`}
+                  >
+                    {isLoading ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-cogs mr-2"></i>Process
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // === Dashboard Component ===
+      function DashboardComponent({ results, onProcessNewFile }) {
+        const bCR = useRef(null);
+        const pCR = useRef(null);
+        const bCI = useRef(null);
+        const pCI = useRef(null);
+        const stats = useMemo(() => {
+          const t = (results || []).length;
+          const a = (results || []).filter(
+            (r) => r?.status === "Accept"
+          ).length;
+          const j = (results || []).filter(
+            (r) => r?.status === "Reject"
+          ).length;
+          const f = (results || []).filter(
+            (r) => r?.status === "Flagged for Review"
+          ).length;
+          const cD = {
+            labels: ["Accepted", "Rejected", "Flagged"],
+            datasets: [
+              {
+                data: [a, j, f],
+                backgroundColor: [
+                  "rgba(16,185,129,0.7)",
+                  "rgba(239,68,68,0.7)",
+                  "rgba(245,158,11,0.7)",
+                ],
+                borderColor: ["#059669", "#DC2626", "#D97706"],
+                borderWidth: 1,
+              },
+            ],
+          };
+          return {
+            total: t,
+            accepted: a,
+            rejected: j,
+            flagged: f,
+            chartData: cD,
+          };
+        }, [results]);
+        useEffect(() => {
+          if (!window.Chart || !stats) {
+            return;
+          }
+          if (bCR.current) {
+            const bCtx = bCR.current.getContext("2d");
+            if (bCI.current) bCI.current.destroy();
+            bCI.current = new Chart(bCtx, {
+              type: "bar",
+              data: {
+                labels: stats.chartData.labels,
+                datasets: [
+                  {
+                    label: "Count",
+                    data: stats.chartData.datasets[0].data,
+                    backgroundColor:
+                      stats.chartData.datasets[0].backgroundColor,
+                    borderColor: stats.chartData.datasets[0].borderColor,
+                    borderRadius: 4,
+                  },
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+              },
+            });
+          }
+          if (pCR.current) {
+            const pCtx = pCR.current.getContext("2d");
+            if (pCI.current) pCI.current.destroy();
+            pCI.current = new Chart(pCtx, {
+              type: "doughnut",
+              data: stats.chartData,
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: "60%",
+                plugins: { legend: { position: "bottom" } },
+              },
+            });
+          }
+          return () => {
+            if (bCI.current) bCI.current.destroy();
+            if (pCI.current) pCI.current.destroy();
+          };
+        }, [stats]);
+        const dE = () => {
+          if (!results || results.length === 0) return;
+          const w = XLSX.utils.json_to_sheet(results);
+          const b = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(b, w, "Claims");
+          XLSX.writeFile(b, "results.xlsx");
+        };
+        const gSC = (s) => {
+          switch (s) {
+            case "Accept":
+              return "bg-green-100 text-green-800";
+            case "Reject":
+              return "bg-red-100 text-red-800";
+            case "Flagged for Review":
+              return "bg-yellow-100 text-yellow-800";
+            default:
+              return "bg-gray-100 text-gray-800";
+          }
+        };
+        const gSI = (s) => {
+          switch (s) {
+            case "Accept":
+              return <i className="fas fa-check-circle text-green-600"></i>;
+            case "Reject":
+              return <i className="fas fa-times-circle text-red-600"></i>;
+            case "Flagged for Review":
+              return (
+                <i className="fas fa-exclamation-triangle text-yellow-600"></i>
+              );
+            default:
+              return <i className="fas fa-question-circle text-gray-500"></i>;
+          }
+        };
+        const th =
+          "px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider";
+        const td = "px-6 py-4 whitespace-nowrap text-sm";
+        const card = "bg-white p-6 rounded-lg shadow-xl border border-gray-200";
+        const h2 = "text-3xl font-bold text-gray-800";
+        const h3 = "text-xl font-semibold text-gray-700 mb-6";
+        const btn =
+          "inline-flex items-center px-5 py-2.5 font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2";
+        const btnBlue = `${btn} bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500`;
+        const btnGreen = `${btn} bg-green-600 text-white hover:bg-green-700 focus:ring-green-500`;
+        const pill =
+          "px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full";
+        const safeResults = Array.isArray(results) ? results : [];
+        return (
+          <div className="max-w-screen-xl mx-auto space-y-10">
+            <div className="flex flex-col md:flex-row justify-between items-center">
+              <h2 className={h2 + " mb-4 md:mb-0"}>Dashboard</h2>
+              <div className="flex space-x-3">
+                <button
+                  onClick={dE}
+                  className={btnGreen + " disabled:opacity-50"}
+                  disabled={safeResults.length === 0}
+                >
+                  <i className="fas fa-file-excel mr-2"></i>Download
+                </button>
+                <button onClick={onProcessNewFile} className={btnBlue}>
+                  <i className="fas fa-plus mr-2"></i>New File
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <StatCard t="Total" v={stats.total} i="fa-stream" c="blue" />
+              <StatCard
+                t="Accepted"
+                v={stats.accepted}
+                i="fa-check"
+                c="green"
+              />
+              <StatCard t="Rejected" v={stats.rejected} i="fa-times" c="red" />
+              <StatCard
+                t="Flagged"
+                v={stats.flagged}
+                i="fa-exclamation-triangle"
+                c="yellow"
+              />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className={card}>
+                <h3 className={h3}>Overview</h3>
+                <div className="h-72">
+                  <canvas ref={bCR}></canvas>
+                </div>
+              </div>
+              <div className={card}>
+                <h3 className={h3}>Distribution</h3>
+                <div className="h-72">
+                  <canvas ref={pCR}></canvas>
+                </div>
+              </div>
+            </div>
+            <div className={card + " p-6 md:p-8"}>
+              <h3 className={h3}>Detailed Results</h3>
+              <div className="table-container overflow-x-auto max-h-[600px] relative border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr>
+                      <th className={th}>Status</th>{" "}
+                      <th className={th}>Claim ID</th>{" "}
+                      <th className={th}>Amount</th>{" "}
+                      <th className={th}>Procedure</th>{" "}
+                      <th className={th}>Diagnosis</th>{" "}
+                      <th className={th + " min-w-[300px]"}>Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {safeResults.map((row, index) => {
+                      const claimIdStr =
+                        row && row.claim_id != null
+                          ? String(row.claim_id)
+                          : `row-${index}`;
+                      const rowStatus = row?.status || "Unknown";
+                      const claimAmount = row?.claim_amount;
+                      const procedureCode = row?.procedure_code;
+                      const diagnosisCode = row?.diagnosis_code;
+                      const reason = row?.reason;
+                      return (
+                        <tr
+                          key={claimIdStr}
+                          className="odd:bg-white even:bg-gray-50 hover:bg-blue-50 transition-colors duration-150"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span
+                              className={`${pill} ${gSC(
+                                rowStatus
+                              )} border ${gSC(rowStatus)
+                                .replace("bg", "border")
+                                .replace("-100", "-200")}`}
+                            >
+                              {" "}
+                              {gSI(rowStatus)}{" "}
+                              <span className="ml-1.5">{rowStatus}</span>{" "}
+                            </span>
+                          </td>
+                          <td className={td + " font-medium text-gray-800"}>
+                            {claimIdStr.startsWith("C") ? claimIdStr : "N/A"}
+                          </td>
+                          <td className={td}>
+                            $
+                            {claimAmount != null
+                              ? parseFloat(claimAmount).toFixed(2)
+                              : "N/A"}
+                          </td>
+                          <td className={td}>{procedureCode || "N/A"}</td>
+                          <td className={td}>{diagnosisCode || "N/A"}</td>
+                          <td className={td + " text-gray-700"} title={reason}>
+                            {reason || "N/A"}
+                          </td>
+                        </tr>
+                      );
+                    })}{" "}
+                    {safeResults.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan="6"
+                          className="text-center py-10 text-gray-500"
+                        >
+                          No results.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // === StatCard Component ===
+      function StatCard({ t, v, i, c }) {
+        const clrs = {
+          blue: { bg: "bg-blue-100", text: "text-blue-600" },
+          green: { bg: "bg-green-100", text: "text-green-600" },
+          red: { bg: "bg-red-100", text: "text-red-600" },
+          yellow: { bg: "bg-yellow-100", text: "text-yellow-600" },
+        };
+        const C = clrs[c] || clrs.blue;
+        return (
+          <div className="bg-white p-6 rounded-lg shadow-lg flex items-center space-x-4 border border-gray-200 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 ease-in-out cursor-default">
+            <div className={`p-4 rounded-full ${C.bg} ${C.text} shadow-inner`}>
+              <i className={`fas ${i} fa-2x w-8 h-8 text-center leading-8`}></i>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                {t}
+              </p>
+              <p className="text-3xl font-bold text-gray-900">{v}</p>
+            </div>
+          </div>
+        );
+      }
+
+      // === Job History Component ===
+      function JobHistoryComponent({ jobs, onBack, onViewJobDetails, error }) {
+        const fD = (iso) => {
+          try {
+            return new Date(iso).toLocaleString();
+          } catch {
+            return iso;
+          }
+        };
+        const validJobs = Array.isArray(jobs)
+          ? jobs.filter((job) => job && typeof job === "object" && job.jobId)
+          : [];
+        const th =
+          "px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider";
+        const td = "px-6 py-4 whitespace-nowrap text-sm";
+        const card = "bg-white p-6 rounded-lg shadow-xl border border-gray-200";
+        const h2 = "text-3xl font-bold text-gray-800";
+        const btnBlue =
+          "inline-flex items-center px-5 py-2.5 font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
+        const alertError =
+          "bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-8 shadow-sm";
+        const rowHover =
+          "odd:bg-white even:bg-gray-50 hover:bg-blue-50 cursor-pointer transition-colors duration-150";
+
+        return (
+          <div className={card + " max-w-6xl mx-auto"}>
+            <div className="flex justify-between items-center mb-8">
+              <h2 className={h2}>Job History</h2>
+              <button onClick={onBack} className={btnBlue}>
+                <i className="fas fa-plus mr-2"></i>New File
+              </button>
+            </div>
+            {error && (
+              <div className={alertError}>
+                <p className="font-bold">Error</p>
+                <p>{error}</p>
+              </div>
+            )}
+            {validJobs.length === 0 && !error && (
+              <p className="text-gray-600 text-center py-10 text-lg">
+                No history.
+              </p>
+            )}
+            {validJobs.length > 0 && (
+              <div className="table-container overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className={th}>File</th>
+                      <th className={th}>Date</th>
+                      <th className={th + " text-center"}>Total</th>
+                      <th className={th + " text-center"}>Accepted</th>
+                      <th className={th + " text-center"}>Rejected</th>
+                      <th className={th + " text-center"}>Flagged</th>
+                      <th className={th}>Job ID</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {validJobs.map((job) => (
+                      <tr
+                        key={job.jobId}
+                        className={rowHover}
+                        onClick={() => onViewJobDetails(job.jobId)}
+                      >
+                        <td className={td + " text-blue-700 hover:underline"}>
+                          {job.fileName || "N/A"}
+                        </td>
+                        <td className={td + " text-gray-600"}>
+                          {fD(job.createdAt)}
+                        </td>
+                        <td
+                          className={
+                            td + " text-center font-bold text-blue-600"
+                          }
+                        >
+                          {job.summary?.total ?? 0}
+                        </td>
+                        <td
+                          className={
+                            td + " text-center font-bold text-green-600"
+                          }
+                        >
+                          {job.summary?.accepted ?? 0}
+                        </td>
+                        <td
+                          className={td + " text-center font-bold text-red-600"}
+                        >
+                          {job.summary?.rejected ?? 0}
+                        </td>
+                        <td
+                          className={
+                            td + " text-center font-bold text-yellow-600"
+                          }
+                        >
+                          {job.summary?.flagged ?? 0}
+                        </td>
+                        <td
+                          className={td + " text-xs text-gray-500 font-mono"}
+                          title={job.jobId}
+                        >
+                          {job.jobId
+                            ? `${job.jobId.substring(0, 8)}...`
+                            : "N/A"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      {
+        /* === Trend Analysis Component === */
+      }
+      function TrendAnalysisComponent({ trendData, onBack, error }) {
+        const chartRef = useRef(null);
+        const chartInstance = useRef(null);
+        const card = "bg-white p-6 rounded-lg shadow-xl border border-gray-200";
+        const h2 = "text-3xl font-bold text-gray-800";
+        const btnBlue =
+          "inline-flex items-center px-5 py-2.5 font-semibold rounded-lg shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500";
+        const alertError =
+          "bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-8 shadow-sm";
+
+        useEffect(() => {
+          if (
+            !window.Chart ||
+            !chartRef.current ||
+            !trendData?.top_reasons_data?.datasets?.[0]?.data
+          ) {
+            if (chartInstance.current) {
+              chartInstance.current.destroy();
+              chartInstance.current = null;
+            }
+            return;
+          }
+          const ctx = chartRef.current.getContext("2d");
+          if (chartInstance.current) {
+            chartInstance.current.destroy();
+          }
+          chartInstance.current = new Chart(ctx, {
+            type: "bar",
+            data: trendData.top_reasons_data,
+            options: {
+              indexAxis: "y",
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                title: {
+                  display: true,
+                  text:
+                    trendData.top_reasons_data.datasets[0].label ||
+                    "Top Rejection Reasons",
+                  font: { size: 16 },
+                  color: "#374151",
+                  padding: { bottom: 20 },
+                },
+                tooltip: {
+                  backgroundColor: "rgba(0, 0, 0, 0.7)",
+                  padding: 10,
+                  cornerRadius: 4,
+                },
+              },
+              scales: {
+                x: {
+                  beginAtZero: true,
+                  title: { display: true, text: "Count", color: "#6b7280" },
+                  ticks: { precision: 0, color: "#6b7280" },
+                  grid: { color: "#e5e7eb" },
+                },
+                y: {
+                  ticks: { color: "#4b5563", font: { size: 10 } },
+                  grid: { display: false },
+                },
+              },
+            },
+          });
+          return () => {
+            if (chartInstance.current) {
+              chartInstance.current.destroy();
+              chartInstance.current = null;
+            }
+          };
+        }, [trendData]);
+
+        return (
+          <div className={card + " max-w-4xl mx-auto"}>
+            <div className="flex justify-between items-center mb-8">
+              {" "}
+              <h2 className={h2}>Trend Analysis</h2>{" "}
+              <button onClick={onBack} className={btnBlue}>
+                <i className="fas fa-arrow-left mr-2"></i>Back to Upload
+              </button>{" "}
+            </div>
+            {error && (
+              <div className={alertError}>
+                <p className="font-bold">Error loading trends:</p>
+                <p>{error}</p>
+              </div>
+            )}
+            {!trendData && !error && (
+              <p className="text-gray-600 text-center py-10">
+                Loading trend data...
+              </p>
+            )}
+            {trendData && (
+              <div>
+                <p className="text-sm text-gray-600 mb-6 text-center">
+                  {" "}
+                  Analysis based on the last{" "}
+                  {trendData.processed_job_count || "N/A"} jobs, analyzing{" "}
+                  {trendData.total_rejections_analyzed || 0} total rejections.{" "}
+                </p>
+                {trendData.top_reasons_data?.datasets?.[0]?.data?.length > 0 ? (
+                  <div className="relative h-96 md:h-[500px]">
+                    {" "}
+                    <canvas ref={chartRef}></canvas>{" "}
+                  </div>
+                ) : (
+                  <p className="text-gray-600 text-center py-10">
+                    No rejection data found.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Mount the app
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>

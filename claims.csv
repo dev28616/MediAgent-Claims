@@ -1,0 +1,11 @@
+claim_id,claim_amount,procedure_code,diagnosis_code,patient_age_group,provider_type
+C1001,850.00,99213,J06.9,30-35,General Practice
+C1002,1200.50,99214,R05,45-50,Specialist
+C1003,300.00,99203,I10,60-65,Cardiology
+C1004,,99213,Z00.0,25-30,General Practice
+C1005,950.00,88305,K21.9,50-55,Gastroenterology
+C1006,25000.00,99215,M54.5,40-45,Orthopedics
+C1007,450.00,99213,J06.9,30-35,General Practice
+C1008,700.00,99395,Z00.129,5-10,Pediatrics
+C1009,150.00,85025,D64.9,70-75,Hematology
+C1010,500.00,99214,E11.9,55-60,Endocrinology

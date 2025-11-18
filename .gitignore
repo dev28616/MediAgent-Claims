@@ -1,0 +1,10 @@
+# Python virtual environment
+venv/
+
+# Environment files
+.env
+serviceAccountKey.json
+
+# IDE / OS specific
+__pycache__/
+.DS_Store
